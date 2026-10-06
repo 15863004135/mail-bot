@@ -366,52 +366,55 @@ def mail_card(subject, sender, when, a, forced=False, body_text="", maxlen=1600)
     return card("📩 新邮件", els)
 
 
+def _schedule_card(state, today, evs):
+    els = [m2("## 🕒 今天（%s）的安排" % today)]
+    for e in evs[:8]:
+        kids = []
+        if e.get("summary"):
+            kids.append(m2("**概要：**" + e["summary"]))
+        kids.append(m2("**来自邮件：**%s" % (e.get("mail") or "（学校邮件）")))
+        if (e.get("url") or "").startswith("http"):
+            kids.append(btn("看活动详情", e["url"]))
+        els.append(panel("**%s**　%s" % (e.get("time") or "全天", e.get("text", "")[:52]), kids))
+    if len(evs) > 8:
+        els.append(m2("……还有 %d 条今天的活动" % (len(evs) - 8)))
+    if not evs:
+        els.append(m2("（今天没有带时间的活动）"))
+    return card2("🕒 今天的安排", els)
+
+
+def _todo_card(items, today, start=0, limit=10):
+    els = [m2("## ✅ 待办（第 %d–%d 条 / 共 %d 件）" % (start + 1, min(start + limit, len(items)), len(items)))]
+    for idx, x in enumerate(items[start:start + limit], start + 1):
+        d = x.get("date") or ""
+        tag = ("⚠️已过期 %s" % d) if (d and d < today) else (("截止 %s" % d) if d else "无截止")
+        kids = []
+        if x.get("ev"):
+            kids.append(m2("**原文：**%s" % x["ev"]))
+        kids.append(m2("**来自邮件：**%s" % (x.get("mail") or "（学校邮件）")))
+        kids.append(m2("**%s**" % tag))
+        if (x.get("url") or "").startswith("http"):
+            kids.append(btn("去办理", x["url"]))
+        els.append(panel("**%d.** %s" % (idx, (x.get("text") or "")[:46]), kids))
+    els.append(btn("打开 163 邮箱", "https://mail.163.com", "default"))
+    return card2("📋 今日待办", els)
+
+
 def daily_card(pending, state=None):
-    """今天的日程：每个活动/待办都是一个可展开的小抽屉。"""
+    """发两张卡：①今天的安排 ②待办清单（每条可展开看原文和来源）。"""
     now = datetime.now(UK)
     today = now.strftime("%Y-%m-%d")
     items = sorted_pending(pending)
-    els = []
-
     evs = []
     if state is not None:
         evs = [e for e in (state.get("events") or []) if e.get("date") == today]
         evs.sort(key=lambda e: (e.get("time") or "99:99"))
-    els.append(m2("## 🕒 今天（%s）的安排" % today))
-    if evs:
-        for e in evs:
-            kids = []
-            if e.get("summary"):
-                kids.append(m2("**概要：**" + e["summary"]))
-            kids.append(m2("**来自邮件：**%s" % (e.get("mail") or "（学校邮件）")))
-            if (e.get("url") or "").startswith("http"):
-                kids.append(btn("看活动详情", e["url"]))
-            elif e.get("mail"):
-                kids.append(m2("（邮件原文请在邮箱里搜这个标题）"))
-            els.append(panel("**%s**　%s" % (e.get("time") or "全天", e.get("text", "")[:56]), kids))
-    else:
-        els.append(m2("（今天没有带时间的活动）"))
-
-    els.append(m2("## 📊 未完成待办 %d 件" % len(items)))
-    if items:
-        for idx, x in enumerate(items[:30], 1):
-            d = x.get("date") or ""
-            tag = ("⚠️已过期 %s" % d) if (d and d < today) else (("截止 %s" % d) if d else "无截止")
-            kids = []
-            if x.get("ev"):
-                kids.append(m2("**原文：**%s" % x["ev"]))
-            kids.append(m2("**来自邮件：**%s" % (x.get("mail") or "（学校邮件）")))
-            kids.append(m2("**%s**" % tag))
-            if (x.get("url") or "").startswith("http"):
-                kids.append(btn("去办理", x["url"]))
-            els.append(panel("**%d.** %s" % (idx, (x.get("text") or "")[:50]), kids))
-    else:
-        els.append(m2("没有未完成的待办。"))
-
-    els.append(btn("打开 163 邮箱", "https://mail.163.com", "default"))
-    els.append({"tag": "note", "elements": [{"tag": "plain_text",
-                "content": "云端自动整理 ｜ %s（英国时间）" % now.strftime("%m-%d %H:%M")}]})
-    return card2("📋 今日待办", els)
+    ok = feishu(_schedule_card(state, today, evs))
+    ok2 = feishu(_todo_card(items, today, 0, 10))
+    if len(items) > 10:
+        ok3 = feishu(_todo_card(items, today, 10, 10))
+        ok = ok and ok3
+    return ok and ok2
 
 
 def add_events(state, subject, a, body=""):
