@@ -30,7 +30,15 @@ FOLDERS = [f.strip() for f in os.environ.get("MAIL_FOLDERS", "").split(",") if f
     "INBOX", "其他邮件", "留学申请", "住宿", "账单与财务", "广告邮件"]
 
 SCHOOL = ["exeter.ac.uk", "exeterguild.com", "exeterguild.org",
-          "universityofexeteruk.onmicrosoft.com"]
+          "universityofexeteruk.onmicrosoft.com",
+          # 下面这些不是学校域名，但和你的学业/生活直接相关，不能漏
+          "glide.co.uk",            # 宿舍水电账单
+          "cas-shield.com",         # 签证 CAS Shield
+          "gov.uk",                 # 英国政府通知（eVisa 等）
+          "panopto.com",            # 课程录播
+          "teams.mail.microsoft",   # 学校 Teams 通知
+          "padlet.com",             # 课程公告板
+          ]
 AD_WORDS = ["促销", "优惠", "限时", "特惠", "折扣", "立减", "大促", "秒杀", "会员日",
             "领券", "退订", "满减", "抽奖", "unsubscribe", "coupon", "voucher",
             "% off", "promotion", "newsletter", "marketing"]
