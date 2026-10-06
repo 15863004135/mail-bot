@@ -22,6 +22,8 @@ KEY = os.environ.get("DEEPSEEK_KEY", "").strip()
 HOOK = os.environ.get("FEISHU_WEBHOOK", "").strip()
 MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash").strip()
 DATA_KEY = os.environ.get("DATA_KEY", "").strip()
+APP_FILE = os.path.join(ROOT, "app.json")          # 飞书应用凭据（加密存放）
+FEISHU_BASE = "https://open.feishu.cn/open-apis"
 IMAP_HOST = os.environ.get("MAIL_IMAP_HOST", "imap.163.com").strip()
 # 163 会把邮件自动分到多个文件夹，所以要一起看（跳过 已发送/草稿/垃圾/验证码 这些）
 FOLDERS = [f.strip() for f in os.environ.get("MAIL_FOLDERS", "").split(",") if f.strip()] or [
@@ -313,9 +315,7 @@ def mail_card(subject, sender, when, a, forced=False):
 def daily_card(pending):
     now = datetime.now(TZ)
     today = now.strftime("%Y-%m-%d")
-    floor = (now - timedelta(days=14)).strftime("%Y-%m-%d")
-    items = sorted([p for p in pending if (p.get("date") or "9999") >= floor or not p.get("date")],
-                   key=lambda p: (p.get("date") or "9999-99-99", p.get("added") or ""))
+    items = sorted_pending(pending)
     els = [md("**📊 未完成待办 %d 件**" % len(items))]
     if items:
         lines = []
@@ -358,6 +358,143 @@ def add_pending(pending, subject, a):
     uniq.reverse()
     del pending[:]
     pending.extend(uniq[-120:])
+
+
+
+# ---------- 飞书应用：读群里的命令 ----------
+def load_app():
+    """优先用环境变量；没有就读取 app.json（加密）。"""
+    aid = os.environ.get("FEISHU_APP_ID", "").strip()
+    sec = os.environ.get("FEISHU_APP_SECRET", "").strip()
+    if not (aid and sec) and os.path.exists(APP_FILE):
+        try:
+            cfg = dec(io.open(APP_FILE, encoding="utf-8").read().strip()) or {}
+            aid = aid or cfg.get("app_id", "")
+            sec = sec or cfg.get("app_secret", "")
+        except Exception as e:
+            log("读取 app.json 失败:", e)
+    return aid, sec
+
+
+def fs_api(method, path, token=None, data=None):
+    req = urllib.request.Request(
+        FEISHU_BASE + path,
+        data=(json.dumps(data, ensure_ascii=False).encode("utf-8") if data is not None else None),
+        headers=dict({"Content-Type": "application/json; charset=utf-8"},
+                     **({"Authorization": "Bearer " + token} if token else {})),
+        method=method)
+    with urllib.request.urlopen(req, timeout=25) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def tenant_token(aid, sec):
+    try:
+        return fs_api("POST", "/auth/v3/tenant_access_token/internal",
+                      data={"app_id": aid, "app_secret": sec}).get("tenant_access_token")
+    except Exception as e:
+        log("取飞书应用 token 失败:", e)
+        return None
+
+
+def sorted_pending(pending):
+    """唯一的排序规则：卡片上的序号就是这里的序号（不过滤，避免两边编号对不上）。"""
+    return sorted(pending, key=lambda p: (p.get("date") or "9999-99-99", p.get("added") or ""))
+
+
+def apply_cmd(text, pending):
+    """把「3 完成」「EDI 完成」「清单」变成动作，返回要回复的话。"""
+    t = (text or "").strip()
+    low = t.lower()
+    if low in ("清单", "list", "待办", "全部", "查看"):
+        return ["__LIST__"]
+    m = re.match(r"^(\d+)\s*(?:条)?\s*(完成|done|已完成|好了|ok|删|删除)$", t, re.I) or \
+        re.match(r"^(?:完成|done|已完成|删|删除)\s*(\d+)$", t, re.I)
+    if m:
+        n = int([g for g in m.groups() if g and g.isdigit()][0])
+    else:
+        m2 = re.match(r"^(.{1,30}?)\s*(?:完成|done|已完成|删|删除)$", t, re.I)
+        if not m2:
+            return []
+        kw = m2.group(1).strip()
+        items = sorted_pending(pending)
+        hit = [i for i, p in enumerate(items, 1) if kw and kw.lower() in (p.get("text") or "").lower()]
+        if not hit:
+            return ["没找到包含「%s」的待办。" % kw]
+        n = hit[0]
+    items = sorted_pending(pending)
+    if n < 1 or n > len(items):
+        return ["序号 %d 超出范围（现在共 %d 条）。发「清单」可以看当前列表。" % (n, len(items))]
+    p = items[n - 1]
+    pending.remove(p)
+    left = len(sorted_pending(pending))
+    return ["✅ 已勾掉「%s」\n还剩 %d 件。" % ((p.get("text") or "")[:40], left)]
+
+
+def send_text(chat_id, text, token):
+    try:
+        fs_api("POST", "/im/v1/messages?receive_id_type=chat_id", token,
+               {"receive_id": chat_id, "msg_type": "text",
+                "content": json.dumps({"text": text}, ensure_ascii=False)})
+        return True
+    except Exception as e:
+        log("发消息失败:", e)
+        return False
+
+
+def handle_commands(state, pending):
+    aid, sec = load_app()
+    if not (aid and sec):
+        log("没有飞书应用凭据，跳过命令处理")
+        return False
+    tok = tenant_token(aid, sec)
+    if not tok:
+        return False
+    cid = state.get("cmd_chat")
+    if not cid:
+        try:
+            r = fs_api("GET", "/im/v1/chats?page_size=50", tok)
+        except Exception as e:
+            log("列群失败:", e); return False
+        items = (r.get("data") or {}).get("items") or []
+        if not items:
+            log("机器人还没被拉进任何群"); return False
+        cid = items[0]["chat_id"]
+        state["cmd_chat"] = cid
+    since = int(state.get("last_cmd_ts") or 0) or (int(time.time()) - 3600)
+    try:
+        r = fs_api("GET", "/im/v1/messages?container_id_type=chat&container_id=%s"
+                          "&start_time=%s&page_size=20&sort_type=ByCreateTimeAsc" % (cid, since), tok)
+    except Exception as e:
+        log("读群消息失败:", e); return False
+    items = (r.get("data") or {}).get("items") or []
+    newest, changed, replies = int(since), False, []
+    for m in items:
+        ct = int(m.get("create_time") or 0) // 1000      # 飞书给的是毫秒，转成秒
+        if ct > newest:
+            newest = ct
+        if m.get("msg_type") != "text":
+            continue
+        snd = m.get("sender") or {}
+        if snd.get("id_type") != "user" and snd.get("sender_type") != "user":
+            continue                      # 只认真人发的，忽略机器人自己
+        try:
+            text = json.loads(m["body"]["content"]).get("text", "")
+        except Exception:
+            continue
+        if not text.strip():
+            continue
+        log("收到命令:", text.strip()[:40])
+        res = apply_cmd(text, pending)
+        if res == ["__LIST__"]:
+            feishu(daily_card(pending))
+            replies.append("📋 已把当前清单发到群里。")
+        elif res:
+            changed = True
+            replies.extend(res)
+    state["last_cmd_ts"] = newest
+    for t in replies:
+        send_text(cid, t, tok)
+    return changed
 
 
 def do_fetch():
