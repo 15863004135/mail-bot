@@ -241,6 +241,7 @@ def mail_card(subject, sender, when, a, forced=False):
     for x in (a.get("actions") or [])[:6]:
         if isinstance(x, dict) and x.get("text"):
             u = (x.get("url") or "").strip()
+            # 有办理网址就给「去办理」；没有就不再挂"看原文"（那个链接已经废弃）
             acts.append("• %s%s" % (x["text"], ("　[去办理 ↗](%s)" % u) if u.startswith("http") else ""))
     if acts:
         els.append(md("**【要做什么】**\n" + "\n".join(acts)))
@@ -253,6 +254,7 @@ def mail_card(subject, sender, when, a, forced=False):
     evs = [e for e in evs if e[2]]
     if evs:
         els.append(md("**【活动】**\n" + "\n".join("• %s %s%s" % (d, (t + " ") if t else "", x) for d, t, x in evs[:5])))
+    els.append(md("[打开 163 邮箱去处理 ↗](https://mail.163.com)"))
     els.append({"tag": "note", "elements": [{"tag": "plain_text",
                 "content": "邮件时间 %s ｜ 云端自动整理" % when}]})
     return card("📩 新邮件", els)
@@ -275,6 +277,7 @@ def daily_card(pending):
         els.append(md("**🔴 要你处理的事（按紧急度排）**\n" + "\n".join(lines)))
     else:
         els.append(md("**🔴 要你处理的事**\n没有未完成的待办。"))
+    els.append(md("[打开 163 邮箱去处理 ↗](https://mail.163.com)"))
     els.append({"tag": "note", "elements": [{"tag": "plain_text",
                 "content": "云端自动整理 ｜ %s" % now.strftime("%m-%d %H:%M")}]})
     return card("📋 今日待办", els)
