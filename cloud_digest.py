@@ -484,6 +484,16 @@ def handle_commands(state, pending):
         if not text.strip():
             continue
         log("收到命令:", text.strip()[:40])
+        rng = parse_range(text)
+        if rng:
+            try:
+                n = range_report(rng[0], rng[1], tok, cid, pending)
+                changed = True
+                log("按需整理了 %d 封" % n)
+            except Exception as e:
+                log("按需整理失败:", e)
+                send_text(cid, "整理失败了：" + str(e)[:80], tok)
+            continue
         res = apply_cmd(text, pending)
         if res == ["__LIST__"]:
             feishu(daily_card(pending))
@@ -495,6 +505,112 @@ def handle_commands(state, pending):
     for t in replies:
         send_text(cid, t, tok)
     return changed
+
+
+
+# ---------- 按日期范围整理邮件 ----------
+MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+RANGE_CAP = 25          # 一次最多整理几封，控制时间和花费
+
+
+def parse_range(text):
+    """识别「9月26日之后」「9/26以后」「最近3天」「9月20日到9月26日」。"""
+    t = (text or "").strip()
+    if not t:
+        return None
+    today = datetime.now(TZ).date()
+    m = re.search(r"最近\s*(\d+)\s*天", t)
+    if m:
+        return (today - timedelta(days=int(m.group(1))), today)
+    if re.search(r"最近\s*(一周|7天|一星期)", t):
+        return (today - timedelta(days=7), today)
+    d1 = d2 = None
+    m = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", t)
+    if m:
+        d1 = datetime(today.year, int(m.group(1)), int(m.group(2))).date()
+        rest = t[m.end():]
+        m2 = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", rest)
+        if m2:
+            d2 = datetime(today.year, int(m2.group(1)), int(m2.group(2))).date()
+    if not d1:
+        ms = re.findall(r"(\d{1,2})\s*[/-]\s*(\d{1,2})", t)
+        if ms:
+            def mk(a, b):
+                a, b = int(a), int(b)
+                mo, dy = (a, b) if a <= 12 else (b, a)
+                return datetime(today.year, mo, dy).date()
+            d1 = mk(*ms[0])
+            if len(ms) > 1:
+                d2 = mk(*ms[1])
+    if not d1:
+        return None
+    if d2 and d2 < d1:
+        d1, d2 = d2, d1
+    return (d1, d2 or today)
+
+
+def imap_range(start_date, end_date):
+    """按日期把邮件正文取回来（最多 RANGE_CAP 封，取最新的）。"""
+    M = imap_connect()
+    out = []
+    for name in FOLDERS:
+        try:
+            typ, _ = M.select(b64_utf7(name), readonly=True)
+            if typ != "OK":
+                continue
+            crit = "SINCE %02d-%s-%d BEFORE %02d-%s-%d" % (
+                start_date.day, MONTHS[start_date.month - 1], start_date.year,
+                (end_date + timedelta(days=1)).day, MONTHS[(end_date + timedelta(days=1)).month - 1],
+                (end_date + timedelta(days=1)).year)
+            typ, dat = M.uid("SEARCH", None, crit)
+            uids = [int(u) for u in (dat[0].split() if dat and dat[0] else [])]
+            for u in uids:
+                typ, dat = M.uid("FETCH", str(u), "(BODY.PEEK[])")
+                if typ == "OK" and dat and isinstance(dat[0], tuple):
+                    out.append((name, u, dat[0][1]))
+        except Exception as e:
+            log("搜索", name, "失败:", e)
+    M.logout()
+    out.sort(key=lambda x: x[1], reverse=True)
+    return out[:RANGE_CAP]
+
+
+def range_report(start_date, end_date, token, chat_id, pending):
+    mails = imap_range(start_date, end_date)
+    send_text(chat_id, "✅ 正在整理 %s 到 %s 的邮件（共 %d 封），稍后发结果。"
+              % (start_date, end_date, len(mails)), token)
+    els, n_new = [], 0
+    for name, uid, raw in mails:
+        msg = message_from_bytes(raw)
+        subj = str(make_header(decode_header(msg.get("Subject", "(no subject)"))))[:70]
+        frm = str(make_header(decode_header(msg.get("From", ""))))[:50]
+        when = (msg.get("Date") or "")[:22]
+        body = text_of(msg)
+        try:
+            a = ask_ai(subj, frm, body) or {}
+        except Exception as e:
+            log("AI 失败:", subj[:24], e)
+            a = {}
+        add_pending(pending, subj, a)
+        n_new += 1
+        lines = ["**%s** ｜ %s" % (subj, frm), "🕐 %s ｜ 📁 %s" % (when, name)]
+        if a.get("summary"):
+            lines.append("**中文摘要：**" + a["summary"])
+        for x in (a.get("actions") or [])[:3]:
+            if isinstance(x, dict) and x.get("text"):
+                u = (x.get("url") or "").strip()
+                ev = (x.get("evidence") or "").strip()
+                lines.append("• %s%s" % (x["text"], ("　[去办理 ↗](%s)" % u) if u.startswith("http") else ""))
+                if ev:
+                    lines.append("　　*原文：%s*" % ev[:130])
+        els.append(md("\n".join(lines)))
+        els.append({"tag": "hr"})
+    if not els:
+        els = [md("这个时间段没有找到邮件。")]
+    els.append({"tag": "note", "elements": [{"tag": "plain_text",
+                "content": "按需整理 ｜ %s 到 %s ｜ 共 %d 封" % (start_date, end_date, n_new)}]})
+    feishu(card("📚 %s 到 %s 的邮件" % (start_date, end_date), els))
+    return n_new
 
 
 def do_fetch():
