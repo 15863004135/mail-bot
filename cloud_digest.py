@@ -431,6 +431,61 @@ def sorted_pending(pending):
     return sorted(pending, key=lambda p: (p.get("date") or "9999-99-99", p.get("added") or ""))
 
 
+
+# ---------- 找活动：先问一句，再给链接 ----------
+ACT = {
+    "hike":  ("徒步/户外", [
+        ("Meetup：Exeter 徒步活动", "https://www.meetup.com/find/?keywords=hiking&location=Exeter"),
+        ("学生会社团总表（找 Hiking / Walking Society）", "https://www.exeterguild.com/societies/main/pages/societies"),
+        ("Exeter 官方旅游（周边去哪玩）", "https://www.visitexeter.com/"),
+    ]),
+    "sport": ("运动/健身", [
+        ("Sport Exeter（校队/健身房/课程）", "https://sport.exeter.ac.uk/"),
+        ("学生会活动中心", "https://www.exeterguild.com/whats-on/main-pages/events-hub"),
+    ]),
+    "social": ("社交/认识人", [
+        ("学生会活动中心（社交活动都在这）", "https://www.exeterguild.com/whats-on/main-pages/events-hub"),
+        ("Meetup：Exeter 社交活动", "https://www.meetup.com/find/?keywords=social&location=Exeter"),
+        ("国际学生活动（含 Intercultural Café）", "https://www.exeter.ac.uk/international-students/events-and-support/"),
+    ]),
+    "culture": ("文化/博物馆/剧院", [
+        ("RAMM 博物馆（免费）", "https://rammuseum.org.uk/"),
+        ("Northcott 剧院", "https://www.exeternorthcott.co.uk/"),
+        ("学校活动日历", "https://www.exeter.ac.uk/events/"),
+    ]),
+    "trip": ("出去玩/一日游", [
+        ("学生会活动中心（社团出游）", "https://www.exeterguild.com/whats-on/main-pages/events-hub"),
+        ("Exeter 官方旅游", "https://www.visitexeter.com/"),
+        ("火车票 Trainline", "https://www.thetrainline.com/"),
+    ]),
+}
+
+
+def act_kind(text):
+    t = (text or "").lower()
+    if any(k in t for k in ["徒步", "爬山", "hike", "hiking", "walk", "户外", "dartmoor"]):
+        return "hike"
+    if any(k in t for k in ["运动", "健身", "sport", "gym", "跑步", "球"]):
+        return "sport"
+    if any(k in t for k in ["社交", "认识", "交友", "social", "朋友", "party"]):
+        return "social"
+    if any(k in t for k in ["文化", "博物馆", "剧院", "展览", "museum", "theatre", "theater", "concert"]):
+        return "culture"
+    if any(k in t for k in ["出去玩", "一日游", "旅行", "trip", "travel", "周边", "周末去哪"]):
+        return "trip"
+    return None
+
+
+def act_reply(text):
+    k = act_kind(text) or "social"
+    label, links = ACT[k]
+    lines = ["**%s 的入口（点一下就能看/报名）：**" % label]
+    for name, u in links:
+        lines.append("• [%s ↗](%s)" % (name, u))
+    lines.append("\n想换一类就说：徒步 / 运动 / 社交 / 文化 / 出去玩")
+    return "\n".join(lines)
+
+
 def apply_cmd(text, pending, done_log=None):
     """把「3 完成」「EDI 完成」「清单」变成动作，返回要回复的话。"""
     t = (text or "").strip()
@@ -566,6 +621,22 @@ def handle_commands(state, pending):
         if not text.strip():
             continue
         log("收到命令:", text.strip()[:40])
+        low = text.strip().lower()
+        # 1) 他之前问了"找活动"，这条就是回答
+        if state.get("pending_q") == "activity":
+            state["pending_q"] = ""
+            replies.append(act_reply(text))
+            changed = True
+            send_text(cid, replies[-1], tok)
+            continue
+        # 2) 他让我找活动 -> 先问一句要哪种
+        if re.search(r"(找|推荐|有什么|有啥).{0,6}(活动|玩的|去处)", text) or "周末活动" in text or "活动推荐" in text:
+            state["pending_q"] = "activity"
+            replies.append("你想找哪一类？回我一个词就行：\n"
+                           "① 徒步/户外　② 运动　③ 社交认识人　④ 文化（博物馆/剧院）　⑤ 出去玩/一日游")
+            changed = True
+            send_text(cid, replies[-1], tok)
+            continue
         rng = parse_range(text)
         if rng:
             try:
