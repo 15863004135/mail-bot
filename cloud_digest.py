@@ -6,7 +6,7 @@
     python cloud_digest.py daily    推一条今日待办
     python cloud_digest.py test     只发一条测试消息
 """
-import base64, hashlib, hmac, imaplib, io, json, os, re, sys, time, urllib.request
+import base64, difflib, hashlib, hmac, imaplib, io, json, os, re, sys, time, urllib.request
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from email import message_from_bytes
@@ -342,11 +342,21 @@ def mail_card(subject, sender, when, a, forced=False, body_text="", maxlen=1600)
     return card("📩 新邮件", els)
 
 
-def daily_card(pending):
-    now = datetime.now(TZ)
+def daily_card(pending, state=None):
+    now = datetime.now(UK)
     today = now.strftime("%Y-%m-%d")
     items = sorted_pending(pending)
-    els = [md("**📊 未完成待办 %d 件**" % len(items))]
+    els = []
+    evs = []
+    if state is not None:
+        evs = [e for e in (state.get("events") or []) if e.get("date") == today]
+        evs.sort(key=lambda e: (e.get("time") or "99:99"))
+    if evs:
+        els.append(md("**🕒 今天（%s）的安排**\n" % today +
+                      "\n".join("• **%s** ｜ %s" % (e.get("time") or "全天", e.get("text", "")[:60]) for e in evs)))
+    else:
+        els.append(md("**🕒 今天（%s）的安排**\n（今天没有带时间的活动／讲座）" % today))
+    els.append(md("**📊 未完成待办 %d 件**" % len(items)))
     if items:
         lines = []
         for i, p in enumerate(items[:30], 1):
@@ -364,6 +374,31 @@ def daily_card(pending):
     els.append({"tag": "note", "elements": [{"tag": "plain_text",
                 "content": "云端自动整理 ｜ %s" % now.strftime("%m-%d %H:%M")}]})
     return card("📋 今日待办", els)
+
+
+def add_events(state, subject, a):
+    """把邮件里的活动攒起来，供每天的时间轴用。"""
+    ev = state.setdefault("events", [])
+    for x in (a.get("events") or []):
+        if isinstance(x, dict) and x.get("text") and x.get("date"):
+            ev.append({"date": x["date"], "time": (x.get("time") or "").strip(),
+                       "text": x["text"][:80], "mail": (subject or "")[:40]})
+    def norm(t):
+        return re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", (t or "").lower().replace("活动", "").replace("university of exeter", "").replace("埃克塞特大学", ""))[:26]
+    uniq = []
+    for e in ev:
+        k = norm(e["text"])
+        dup = False
+        for u in uniq:
+            if u["date"] != e["date"] or (u.get("time") or "") != (e.get("time") or ""):
+                continue
+            k2 = norm(u["text"])
+            if k and k2 and (k in k2 or k2 in k or difflib.SequenceMatcher(None, k, k2).ratio() >= 0.6):
+                dup = True
+                break
+        if not dup:
+            uniq.append(e)
+    state["events"] = uniq[-300:]
 
 
 def add_pending(pending, subject, a):
@@ -663,7 +698,7 @@ def handle_commands(state, pending):
             res = [x for x in res if x != "__LIST__"]
         if "__LIST__" in res:
             changed = True
-            feishu(daily_card(pending))
+            feishu(daily_card(pending, state))
             res = [x for x in res if x != "__LIST__"]
         if res:
             changed = True
@@ -856,6 +891,7 @@ def process_new_mail(state, pending):
             a = {}
         a["category"] = a.get("category") or "fyi"
         add_pending(pending, subj, a)
+        add_events(state, subj, a)
         if feishu(mail_card(subj, frm, when, a, forced=school, body_text=body)):
             pushed += 1
     return pushed
@@ -866,7 +902,7 @@ def housekeeping(state, pending):
     try:
         uk = datetime.now(UK)
         if uk.strftime("%H:%M") >= "08:00" and state.get("last_daily_uk") != uk.strftime("%Y-%m-%d"):
-            if feishu(daily_card(pending)):
+            if feishu(daily_card(pending, state)):
                 state["last_daily_uk"] = uk.strftime("%Y-%m-%d")
                 log("已推送今日待办（英国时间 %s）" % uk.strftime("%H:%M"))
         if uk.weekday() == 6 and uk.strftime("%H:%M") >= "20:00" and state.get("last_weekly") != uk.strftime("%Y-%m-%d"):
@@ -926,7 +962,7 @@ def do_watch(minutes=315, cmd_every=15, mail_every=90):
 
 
 def do_daily():
-    feishu(daily_card(load_data(PENDING, [])))
+    feishu(daily_card(load_data(PENDING, []), load(STATE, {})))
     return 0
 
 

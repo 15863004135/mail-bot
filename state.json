@@ -182,5 +182,379 @@
    "at": "2026-10-06T11:36:35.000069"
   }
  ],
- "last_daily_uk": ""
+ "last_daily_uk": "",
+ "events": [
+  {
+   "date": "2026-10-05",
+   "time": "10:00",
+   "text": "St Luke's Drop in 活动",
+   "mail": "Win an iPad, Switch, AirPods and more 👇"
+  },
+  {
+   "date": "2026-10-07",
+   "time": "10:00",
+   "text": "Streatham Drop In 活动",
+   "mail": "Win an iPad, Switch, AirPods and more 👇"
+  },
+  {
+   "date": "2026-10-12",
+   "time": "10:00",
+   "text": "Streatham Drop in 活动",
+   "mail": "Win an iPad, Switch, AirPods and more 👇"
+  },
+  {
+   "date": "2026-10-05",
+   "time": "11:00",
+   "text": "PwC校园雇主展示活动",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-05",
+   "time": "14:30",
+   "text": "Persuading, Influencing and Negotiation Skills技能线上课程",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-06",
+   "time": "11:00",
+   "text": "埃克塞特大学兼职工作与志愿服务招聘会2026",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-06",
+   "time": "12:30",
+   "text": "Savills研究生项目介绍线上宣讲会",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-06",
+   "time": "17:30",
+   "text": "Young MCA - Shaping the Future of Management Consultancy线上活动",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-06",
+   "time": "17:30",
+   "text": "与Bloomberg LP的互动职业与社交晚会",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-08",
+   "time": "15:30",
+   "text": "Preparing for Case Interviews（咨询岗位）",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-12",
+   "time": "10:00",
+   "text": "Capgemini Your Unfiltered Future雇主展示活动",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-13",
+   "time": "10:00",
+   "text": "Macfarlanes Roadshow雇主展示活动",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-13",
+   "time": "17:30",
+   "text": "Careers in… Public Policy and Think Tanks线上校友座谈",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-15",
+   "time": "10:30",
+   "text": "Deloitte Brand Activation雇主展示活动",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-15",
+   "time": "18:45",
+   "text": "Careers in... Public Policy and Government校友座谈与社交活动（混合形式）",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-21",
+   "time": "17:00",
+   "text": "Mott MacDonald水与环境研究生职业线上研讨会",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-08",
+   "time": "11:00",
+   "text": "Ask An Alum 重新上线活动，在 Forum 举行",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-21",
+   "time": "15:00",
+   "text": "PGCE 教师培训课程介绍会，在 Newman Red Lecture Theatre, Peter Chalk Centre 举行",
+   "mail": "Careers - What's On Exeter 04-10-2026"
+  },
+  {
+   "date": "2026-10-06",
+   "time": "18:30",
+   "text": "Kilimanjaro筹款挑战信息说明会",
+   "mail": "Kilimanjaro 2027"
+  },
+  {
+   "date": "2026-10-05",
+   "time": "",
+   "text": "调查活动：What matters most to you，从10月5日至19日",
+   "mail": "Welcome to Term 1: Discover Your Exeter "
+  },
+  {
+   "date": "2026-10-05",
+   "time": "10:35",
+   "text": "跨文化沟通技能发展课程（第一场）",
+   "mail": "A couple of recommendations"
+  },
+  {
+   "date": "2026-11-16",
+   "time": "13:35",
+   "text": "跨文化沟通技能发展课程（第二场）",
+   "mail": "A couple of recommendations"
+  },
+  {
+   "date": "2026-10-05",
+   "time": "",
+   "text": "学生就业周（Student Employment Week）",
+   "mail": "Student Employment Week! 5 - 8 October."
+  },
+  {
+   "date": "2026-10-06",
+   "time": "11:00",
+   "text": "兼职工作与志愿服务招聘会（Part-Time Jobs & Volunteering Fair）",
+   "mail": "Student Employment Week! 5 - 8 October."
+  },
+  {
+   "date": "2026-10-08",
+   "time": "11:00",
+   "text": "在Forum与就业团队、实习团队、职业导师团队等见面",
+   "mail": "Student Employment Week! 5 - 8 October."
+  },
+  {
+   "date": "2026-10-18",
+   "time": "",
+   "text": "九夜节庆祝活动于10月18日星期日举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2026-11-15",
+   "time": "",
+   "text": "校园排灯节庆祝活动于11月15日星期日举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2026-10-31",
+   "time": "",
+   "text": "达特穆尔徒步活动于10月31日星期六举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2026-11-06",
+   "time": "13:30",
+   "text": "Explore Postgraduate Exeter – Streatham活动于11月6日13:30-16:00举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2027-04-23",
+   "time": "13:30",
+   "text": "Explore Postgraduate Exeter – Streatham活动于4月23日13:30-16:00举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2027-06-18",
+   "time": "13:30",
+   "text": "Explore Postgraduate Exeter – Streatham活动于6月18日13:30-16:00举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2026-10-09",
+   "time": "13:30",
+   "text": "Explore Postgraduate Exeter – St Luke’s活动于10月9日13:30-16:00举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2027-04-16",
+   "time": "13:30",
+   "text": "Explore Postgraduate Exeter – St Luke’s活动于4月16日13:30-16:00举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2027-07-02",
+   "time": "13:30",
+   "text": "Explore Postgraduate Exeter – St Luke’s活动于7月2日13:30-16:00举行",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2026-09-24",
+   "time": "",
+   "text": "Pitch Up and Play (PUAP) 免费体育活动，2026年9月24日星期三",
+   "mail": "Your International News - October 2026"
+  },
+  {
+   "date": "2026-11-16",
+   "time": "13:35",
+   "text": "Developing your skills in intercultural communication November 2026活动，地点为Interna",
+   "mail": "Attendance Booked for Developing your sk"
+  },
+  {
+   "date": "2026-10-05",
+   "time": "11:30",
+   "text": "Understanding Internship Schemes for International Students 在线讲座",
+   "mail": "Understanding Exeter Internship Schemes "
+  },
+  {
+   "date": "2026-10-21",
+   "time": "14:30",
+   "text": "线上活动：China Career Ready: Writing Successful Applications for Jobs in China and t",
+   "mail": "Attendance Booked for China Career Ready"
+  },
+  {
+   "date": "2026-10-21",
+   "time": "14:30",
+   "text": "China Career Ready: Writing Successful Applications for Jobs in China and the UK",
+   "mail": "Attendance Booked for China Career Ready"
+  },
+  {
+   "date": "2026-10-14",
+   "time": "15:30",
+   "text": "China Career Ready: Gaining UK Work Experience to Impress Employers in China and",
+   "mail": "Attendance Booked for China Career Ready"
+  },
+  {
+   "date": "2026-10-14",
+   "time": "15:30",
+   "text": "参加在线活动“China Career Ready: Gaining UK Work Experience to Impress Employers in Ch",
+   "mail": "Attendance Booked for China Career Ready"
+  },
+  {
+   "date": "2026-10-07",
+   "time": "14:30",
+   "text": "China Career Ready: Finding Graduate Jobs in China and the UK 线上活动",
+   "mail": "Attendance Booked for China Career Ready"
+  },
+  {
+   "date": "2026-10-17",
+   "time": "10:30",
+   "text": "论坛：探索香港和中国大陆的机遇、人才格局和市场趋势",
+   "mail": "Hong Kong · Global Talent & Career Showc"
+  },
+  {
+   "date": "2026-10-17",
+   "time": "10:30",
+   "text": "招聘会：探索200多个职位机会，现场提交简历，与HR直接交流",
+   "mail": "Hong Kong · Global Talent & Career Showc"
+  },
+  {
+   "date": "2026-10-17",
+   "time": "14:00",
+   "text": "研讨会：获得行业见解，探索职业路径，获取实用职业建议",
+   "mail": "Hong Kong · Global Talent & Career Showc"
+  },
+  {
+   "date": "2026-09-29",
+   "time": "16:00",
+   "text": "Career Pitstop with Oracle Red Bull Racing - Employer Showcase",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-09-29",
+   "time": "18:45",
+   "text": "Red Bull Racing Career Event - Employer Presentation",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-01",
+   "time": "14:30",
+   "text": "Explore Careers at EY - Employer Drop In",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-01",
+   "time": "18:45",
+   "text": "Careers Connect: Accountancy, Banking, Finance and Insurance - Employer Talks & ",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-05",
+   "time": "11:00",
+   "text": "PwC Campus Event - Employer Showcase",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-05",
+   "time": "12:30",
+   "text": "Solicitor vs Barrister: Choosing Your Career (Virtual) - The University of Law",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-05",
+   "time": "17:00",
+   "text": "POV: Life as a Linklaters Trainee - An Immersive Workshop - Employer Presentatio",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-06",
+   "time": "11:00",
+   "text": "University of Exeter Part-Time Jobs & Volunteering Fair 2026",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-06",
+   "time": "12:30",
+   "text": "Savills Graduate Programme Overview - Virtual Presentation",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-06",
+   "time": "17:30",
+   "text": "Interactive Careers and Networking evening with Bloomberg LP - Employer Presenta",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-08",
+   "time": "18:45",
+   "text": "Careers in... Business and Consultancy - Live Panel & Networking (Hybrid)",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-15",
+   "time": "18:00",
+   "text": "Meet BCG: Exeter Case Study Workshop & Networking",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-21",
+   "time": "17:00",
+   "text": "Mott MacDonald - Water and Environment Graduate Careers Webinar",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-09-28",
+   "time": "15:30",
+   "text": "Opening City Doors: The Financial Career Landscape",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-09-30",
+   "time": "15:30",
+   "text": "AmplifyME University Pathways Launch Event",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-10-02",
+   "time": "13:30",
+   "text": "Find Two Friends: a Lawyer and an Accountant - Simon Dunkley Financial Adviser T",
+   "mail": "Careers - What's On Exeter 27-09-2026"
+  },
+  {
+   "date": "2026-09-29",
+   "time": "14:35",
+   "text": "Oral Fluency Group 5 第二节课，地点为 International Study Centre Room 2.04",
+   "mail": "Welcome to Oral Fluency Group 5, Session"
+  }
+ ]
 }
