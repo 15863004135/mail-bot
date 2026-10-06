@@ -962,7 +962,13 @@ def housekeeping(state, pending):
 def do_fetch():
     state = load(STATE, {})
     pending = load_data(PENDING, [])
-    pushed = process_new_mail(state, pending)
+    try:
+        pushed = process_new_mail(state, pending)
+    except Exception as e:
+        import traceback
+        log("收信出错（不让任务失败）:", e)
+        traceback.print_exc()
+        pushed = 0
     try:
         if handle_commands(state, pending):
             log("已按群里的命令更新待办池")
@@ -1019,6 +1025,16 @@ def do_test():
 
 
 def main():
+    try:
+        return _main()
+    except Exception as e:
+        import traceback
+        log("❌ 运行出错（已捕获，状态仍会保存）:", e)
+        traceback.print_exc()
+        return 0
+
+
+def _main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "fetch"
     if mode == "test":
         return do_test()
