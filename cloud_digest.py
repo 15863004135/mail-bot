@@ -8,6 +8,7 @@
 """
 import base64, hashlib, hmac, imaplib, io, json, os, re, sys, time, urllib.request
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from email import message_from_bytes
 from email.header import decode_header, make_header
 from email.utils import parsedate_to_datetime
@@ -16,6 +17,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(ROOT, "state.json")
 PENDING = os.path.join(ROOT, "pending.json")
 TZ = timezone(timedelta(hours=8))
+UK = ZoneInfo("Europe/London")
 
 USER = os.environ.get("MAIL163_USER", "").strip()
 PASS = os.environ.get("MAIL163_PASS", "").strip()
@@ -429,7 +431,7 @@ def sorted_pending(pending):
     return sorted(pending, key=lambda p: (p.get("date") or "9999-99-99", p.get("added") or ""))
 
 
-def apply_cmd(text, pending):
+def apply_cmd(text, pending, done_log=None):
     """把「3 完成」「EDI 完成」「清单」变成动作，返回要回复的话。"""
     t = (text or "").strip()
     low = t.lower()
@@ -454,6 +456,9 @@ def apply_cmd(text, pending):
         return ["序号 %d 超出范围（现在共 %d 条）。发「清单」可以看当前列表。" % (n, len(items))]
     p = items[n - 1]
     pending.remove(p)
+    if done_log is not None:
+        done_log.append({"text": p.get("text", ""), "at": datetime.now(TZ).isoformat()})
+        del done_log[:-300]
     left = len(sorted_pending(pending))
     return ["✅ 已勾掉「%s」\n还剩 %d 件，下面是更新后的清单。" % ((p.get("text") or "")[:40], left),
             "__LIST__"]
@@ -523,7 +528,7 @@ def handle_commands(state, pending):
                 log("按需整理失败:", e)
                 send_text(cid, "整理失败了：" + str(e)[:80], tok)
             continue
-        res = apply_cmd(text, pending)
+        res = apply_cmd(text, pending, state.setdefault("done_log", []))
         if "__LIST__" in res:
             changed = True
             feishu(daily_card(pending))
@@ -665,6 +670,31 @@ def range_report(start_date, end_date, token, chat_id, pending, skip=None):
     feishu(card("📚 %s 到 %s 的邮件" % (start_date, end_date), els))
     return n_new, done
 
+
+def weekly_card(pending, state):
+    """每周结束时：本周完成了什么、还剩什么。"""
+    uk = datetime.now(UK)
+    logs = state.get("done_log") or []
+    week_ago = (uk - timedelta(days=7)).isoformat()
+    recent = [x for x in logs if (x.get("at") or "") >= week_ago]
+    items = sorted_pending(pending)
+    els = [md("**✅ 本周完成 %d 件**" % len(recent))]
+    els.append(md("\n".join("• %s" % (x.get("text") or "")[:60] for x in recent[-20:]) if recent
+                  else "（这周还没有标记完成的待办）"))
+    els.append(md("**⏳ 还没完成 %d 件**" % len(items)))
+    if items:
+        lines = []
+        for i, x in enumerate(items[:15], 1):
+            d = x.get("date") or ""
+            link = ("　[去办理 ↗](%s)" % x["url"]) if (x.get("url") or "").startswith("http") else ""
+            lines.append("%d. %s%s%s" % (i, x.get("text", "")[:50], ("（截止 %s）" % d) if d else "", link))
+        els.append(md("\n".join(lines)))
+    els.append(md("[打开 163 邮箱 ↗](https://mail.163.com)"))
+    els.append({"tag": "note", "elements": [{"tag": "plain_text",
+                "content": "周报 ｜ %s（英国时间）" % uk.strftime("%Y-%m-%d %H:%M")}]})
+    return card("📊 本周回顾", els)
+
+
 def do_fetch():
     state = load(STATE, {})
     pending = load_data(PENDING, [])
@@ -696,6 +726,25 @@ def do_fetch():
             time.sleep(1)
         else:
             log("按规则跳过:", subj[:36])
+    # 处理群里的命令（完成/清单/按日期整理）
+    try:
+        if handle_commands(state, pending):
+            log("已按群里的命令更新待办池")
+    except Exception as e:
+        log("处理命令出错:", e)
+    # 每天 08:00（英国时间）推今日待办；周日 20:00 推周报
+    try:
+        uk = datetime.now(UK)
+        if uk.strftime("%H:%M") >= "08:00" and state.get("last_daily_uk") != uk.strftime("%Y-%m-%d"):
+            if feishu(daily_card(pending)):
+                state["last_daily_uk"] = uk.strftime("%Y-%m-%d")
+                log("已推送今日待办（英国时间 %s）" % uk.strftime("%H:%M"))
+        if uk.weekday() == 6 and uk.strftime("%H:%M") >= "20:00" and state.get("last_weekly") != uk.strftime("%Y-%m-%d"):
+            if feishu(weekly_card(pending, state)):
+                state["last_weekly"] = uk.strftime("%Y-%m-%d")
+                log("已推送本周回顾")
+    except Exception as e:
+        log("日报/周报出错:", e)
     save(STATE, state)
     save_data(PENDING, pending)
     log("推送 %d 封，待办池 %d 条" % (pushed, len(pending)))
