@@ -690,6 +690,9 @@ def parse_range(text):
     t = (text or "").strip()
     if not t:
         return None
+    # 这是"勾掉待办"的话，不是要整理邮件
+    if re.search(r"(完成|done|已完成|删|删除|好了|勾掉|不要再发|别发)", t, re.I):
+        return None
     today = datetime.now(TZ).date()
     m = re.search(r"最近\s*(\d+)\s*天", t)
     if m:
