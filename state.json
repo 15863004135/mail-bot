@@ -1,4 +1,28 @@
 {
- "uidvalidity": "1",
- "last_uid": 1695643324
+ "folders": {
+  "INBOX": {
+   "uidvalidity": "1",
+   "last_uid": 1695643324
+  },
+  "其他邮件": {
+   "uidvalidity": "264",
+   "last_uid": 1719552357
+  },
+  "留学申请": {
+   "uidvalidity": "257",
+   "last_uid": 1719552359
+  },
+  "住宿": {
+   "uidvalidity": "259",
+   "last_uid": 1719552220
+  },
+  "账单与财务": {
+   "uidvalidity": "260",
+   "last_uid": 1719552186
+  },
+  "广告邮件": {
+   "uidvalidity": "7",
+   "last_uid": 1719552361
+  }
+ }
 }

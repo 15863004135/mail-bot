@@ -23,13 +23,34 @@ HOOK = os.environ.get("FEISHU_WEBHOOK", "").strip()
 MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash").strip()
 DATA_KEY = os.environ.get("DATA_KEY", "").strip()
 IMAP_HOST = os.environ.get("MAIL_IMAP_HOST", "imap.163.com").strip()
+# 163 会把邮件自动分到多个文件夹，所以要一起看（跳过 已发送/草稿/垃圾/验证码 这些）
+FOLDERS = [f.strip() for f in os.environ.get("MAIL_FOLDERS", "").split(",") if f.strip()] or [
+    "INBOX", "其他邮件", "留学申请", "住宿", "账单与财务", "广告邮件"]
 
 SCHOOL = ["exeter.ac.uk", "exeterguild.com", "exeterguild.org",
           "universityofexeteruk.onmicrosoft.com"]
 AD_WORDS = ["促销", "优惠", "限时", "特惠", "折扣", "立减", "大促", "秒杀", "会员日",
             "领券", "退订", "满减", "抽奖", "unsubscribe", "coupon", "voucher",
             "% off", "promotion", "newsletter", "marketing"]
-MAX_PER_RUN = 15
+MAX_PER_RUN = 25
+
+
+def b64_utf7(s):
+    """把中文文件夹名编码成 IMAP 的 modified UTF-7。"""
+    out, i = "", 0
+    while i < len(s):
+        ch = s[i]
+        if 0x20 <= ord(ch) <= 0x7e:
+            out += "&-" if ch == "&" else ch
+            i += 1
+        else:
+            j = i
+            while j < len(s) and not (0x20 <= ord(s[j]) <= 0x7e):
+                j += 1
+            enc = base64.b64encode(s[i:j].encode("utf-16-be")).decode().rstrip("=").replace("/", ",")
+            out += "&" + enc + "-"
+            i = j
+    return out
 
 
 def log(*a):
@@ -180,23 +201,42 @@ def imap_connect():
 
 
 def fetch_new(state):
+    """扫多个文件夹，返回 [(folder, uid, raw), ...]。state 按文件夹分别记进度。"""
     M = imap_connect()
-    typ, dat = M.select("INBOX", readonly=True)
-    if typ != "OK":
-        raise RuntimeError("cannot open INBOX")
-    uidv = M.untagged_responses.get("UIDVALIDITY", [b"0"])[0].decode()
-    last = int(state.get("last_uid") or 0) if state.get("uidvalidity") == uidv else 0
-    typ, dat = M.uid("SEARCH", None, "UID %d:*" % (last + 1))
-    uids = [int(u) for u in (dat[0].split() if dat and dat[0] else [])]
-    uids = [u for u in uids if u > last][-MAX_PER_RUN:]
+    folders = state.setdefault("folders", {})
+    out = []
+    for name in FOLDERS:
+        raw_name = b64_utf7(name)
+        try:
+            typ, dat = M.select(raw_name, readonly=True)
+        except Exception as e:
+            log("打开文件夹失败:", name, e)
+            continue
+        if typ != "OK":
+            log("跳过文件夹:", name)
+            continue
+        total = dat[0].decode() if dat and dat[0] else "?"
+        uidv = M.untagged_responses.get("UIDVALIDITY", [b"0"])[0].decode()
+        st = folders.get(name) or {}
+        last = int(st.get("last_uid") or 0) if st.get("uidvalidity") == uidv else 0
+        typ, dat = M.uid("SEARCH", None, "UID %d:*" % (last + 1))
+        uids = [int(u) for u in (dat[0].split() if dat and dat[0] else [])]
+        uids = [u for u in uids if u > last]
+        folders[name] = {"uidvalidity": uidv, "last_uid": max(uids) if uids else last}
+        if uids:
+            log("  %s: 共 %s 封，新 %d 封" % (name, total, len(uids)))
+        out.extend((name, u, None) for u in uids)
+    out = out[:MAX_PER_RUN]
     mails = []
-    for uid in uids:
+    for name, uid, _ in out:
+        M.select(b64_utf7(name), readonly=True)
         typ, dat = M.uid("FETCH", str(uid), "(BODY.PEEK[])")
         if typ == "OK" and dat and isinstance(dat[0], tuple):
-            mails.append((uid, dat[0][1]))
-    state["uidvalidity"] = uidv
-    if uids:
-        state["last_uid"] = max(uids)
+            mails.append((name, uid, dat[0][1]))
+    state["folders"] = folders
+    # 兼容旧字段
+    state.pop("uidvalidity", None)
+    state.pop("last_uid", None)
     M.logout()
     return mails
 
@@ -204,11 +244,11 @@ def fetch_new(state):
 PROMPT = """You help a Chinese student triage university email. Read the email and reply with JSON only:
 {"category":"action|important|fyi",
  "summary":"centre idea in Simplified Chinese, under 80 characters",
- "actions":[{"text":"what to do, in Chinese, start with a verb","url":"official URL from the email, else empty"}],
+ "actions":[{"text":"what to do, in Chinese, start with a verb","evidence":"the exact original sentence from the email that supports this (keep its original language)","url":"official URL from the email, else empty"}],
  "deadlines":[{"date":"YYYY-MM-DD","text":"Chinese note"}],
  "events":[{"date":"YYYY-MM-DD","time":"HH:MM or empty","text":"Chinese note"}]}
 Rules: actions = only things the recipient must actually do, max 5, else empty list.
-Never invent URLs; a URL must appear in the email. Only include dates you can see."""
+Never invent URLs; a URL must appear in the email. Only include dates you can see.\nCopy evidence EXACTLY from the email, do not translate it."""
 
 
 def ask_ai(subject, sender, body):
@@ -248,8 +288,11 @@ def mail_card(subject, sender, when, a, forced=False):
     for x in (a.get("actions") or [])[:6]:
         if isinstance(x, dict) and x.get("text"):
             u = (x.get("url") or "").strip()
-            # 有办理网址就给「去办理」；没有就不再挂"看原文"（那个链接已经废弃）
-            acts.append("• %s%s" % (x["text"], ("　[去办理 ↗](%s)" % u) if u.startswith("http") else ""))
+            ev = (x.get("evidence") or "").strip()
+            line = "• %s%s" % (x["text"], ("　[去办理 ↗](%s)" % u) if u.startswith("http") else "")
+            if ev:
+                line += "\n　　*原文：%s*" % ev[:160]
+            acts.append(line)
     if acts:
         els.append(md("**【要做什么】**\n" + "\n".join(acts)))
     dls = [(x.get("date") or "", x.get("text") or "") for x in (a.get("deadlines") or []) if isinstance(x, dict)]
@@ -280,7 +323,10 @@ def daily_card(pending):
             d = p.get("date") or ""
             tag = ("（⚠️已过期 %s）" % d) if (d and d < today) else (("（截止 %s）" % d) if d else "")
             link = ("　[去办理 ↗](%s)" % p["url"]) if (p.get("url") or "").startswith("http") else ""
-            lines.append("%d. %s%s%s\n　　来自：%s" % (i, p.get("text", ""), tag, link, (p.get("mail") or "")[:34]))
+            ev = (p.get("ev") or "").strip()
+            lines.append("%d. %s%s%s\n　　%s\n　　来自：%s" % (
+                i, p.get("text", ""), tag, link,
+                ("*原文：%s*" % ev) if ev else "*原文：见邮件*", (p.get("mail") or "")[:34]))
         els.append(md("**🔴 要你处理的事（按紧急度排）**\n" + "\n".join(lines)))
     else:
         els.append(md("**🔴 要你处理的事**\n没有未完成的待办。"))
@@ -301,6 +347,7 @@ def add_pending(pending, subject, a):
     for x in (a.get("actions") or []):
         if isinstance(x, dict) and x.get("text"):
             pending.append({"text": x["text"], "url": (x.get("url") or ""), "date": day,
+                            "ev": (x.get("evidence") or "")[:160],
                             "mail": subject, "added": datetime.now(TZ).isoformat()})
     seen, uniq = set(), []
     for p in reversed(pending):
