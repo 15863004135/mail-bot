@@ -10,6 +10,7 @@ import base64, hashlib, hmac, imaplib, io, json, os, re, sys, time, urllib.reque
 from datetime import datetime, timedelta, timezone
 from email import message_from_bytes
 from email.header import decode_header, make_header
+from email.utils import parsedate_to_datetime
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(ROOT, "state.json")
@@ -171,6 +172,18 @@ def md(t):
     return {"tag": "div", "text": {"tag": "lark_md", "content": t}}
 
 
+
+def hdr(msg, name, default=""):
+    """解码邮件头；遇到坏编码也不崩。"""
+    raw = msg.get(name, default)
+    try:
+        return str(make_header(decode_header(raw)))
+    except Exception:
+        try:
+            return str(raw)
+        except Exception:
+            return default
+
 def text_of(msg):
     body = ""
     try:
@@ -253,8 +266,8 @@ def fetch_new(state):
 
 PROMPT = """You help a Chinese student triage university email. Read the email and reply with JSON only:
 {"category":"action|important|fyi",
- "summary":"centre idea in Simplified Chinese, under 80 characters",
- "translation":"把邮件正文翻译成简体中文，保留关键信息（时间、金额、机构名、要求），最多 300 字",
+ "summary":"用简体中文概括这封邮件讲什么，不超过 60 字",
+ "translation":"把邮件正文完整准确地翻译成简体中文，保留段落和全部关键信息（时间、金额、机构名、网址、要求），最多 1200 字",
  "actions":[{"text":"what to do, in Chinese, start with a verb","evidence":"the exact original sentence from the email that supports this (keep its original language)","url":"official URL from the email, else empty"}],
  "deadlines":[{"date":"YYYY-MM-DD","text":"Chinese note"}],
  "events":[{"date":"YYYY-MM-DD","time":"HH:MM or empty","text":"Chinese note"}]}
@@ -290,40 +303,38 @@ def is_ad(subject, sender):
     return any(w.lower() in t for w in AD_WORDS)
 
 
-def mail_card(subject, sender, when, a, forced=False, body_text=""):
+def mail_card(subject, sender, when, a, forced=False, body_text="", maxlen=1600):
+    """一封邮件一张卡片：①概要 ②中文翻译 ③英文原文 ④要做什么 ⑤链接"""
     cat = {"action": "需要行动", "important": "重要", "fyi": "知会"}.get(a.get("category"), "")
     els = [md("**%s**\n%s ｜ %s%s" % (subject, cat, sender, " ｜ 学校邮件" if forced else ""))]
-    if a.get("translation"):
-        els.append(md("**【中文翻译】**\n" + a["translation"]))
-    elif a.get("summary"):
-        els.append(md("**【这封在讲什么】**\n" + a["summary"]))
-    if not (a.get("actions") or []):
-        els.append(md("**【要做什么】**\n（这封没有需要你动手的事）"))
+    if a.get("summary"):
+        els.append(md("**【概要】**\n" + a["summary"]))
+    tr = (a.get("translation") or "").strip()
+    if tr:
+        cut = "\n……（翻译过长，已截取）" if len(tr) > maxlen else ""
+        els.append(md("**【中文翻译】**\n" + tr[:maxlen] + cut))
+    orig = (body_text or "").strip()
+    if orig:
+        cut = "\n……（原文过长，已截取）" if len(orig) > maxlen else ""
+        els.append(md("**【英文原文】**\n" + orig[:maxlen] + cut))
     acts = []
-    for x in (a.get("actions") or [])[:6]:
+    for x in (a.get("actions") or [])[:5]:
         if isinstance(x, dict) and x.get("text"):
             u = (x.get("url") or "").strip()
             ev = (x.get("evidence") or "").strip()
             line = "• %s%s" % (x["text"], ("　[去办理 ↗](%s)" % u) if u.startswith("http") else "")
             if ev:
-                line += "\n　　*原文：%s*" % ev[:160]
+                line += "\n　　*原文：%s*" % ev[:140]
             acts.append(line)
-    if acts:
-        els.append(md("**【要做什么】**\n" + "\n".join(acts)))
-    dls = [(x.get("date") or "", x.get("text") or "") for x in (a.get("deadlines") or []) if isinstance(x, dict)]
-    dls = [d for d in dls if d[1]]
-    if dls:
-        els.append(md("**【截止】**\n" + "\n".join("• %s%s" % (d + " " if d else "", t) for d, t in dls[:5])))
-    evs = [(x.get("date") or "", x.get("time") or "", x.get("text") or "")
-           for x in (a.get("events") or []) if isinstance(x, dict)]
-    evs = [e for e in evs if e[2]]
-    if evs:
-        els.append(md("**【活动】**\n" + "\n".join("• %s %s%s" % (d, (t + " ") if t else "", x) for d, t, x in evs[:5])))
+    els.append(md("**【要做什么】**\n" + ("\n".join(acts) if acts else "（这封没有需要你动手的事）")))
+    for x in (a.get("deadlines") or [])[:4]:
+        if isinstance(x, dict) and x.get("text"):
+            els.append(md("**⏰ 截止** %s %s" % (x.get("date") or "", x["text"])))
     lks = mail_links(body_text)
     if lks:
         els.append(md("**【邮件里的链接】**\n" + "\n".join(
-            "• [%s ↗](%s)" % (u.split("/")[2][:28], u) for u in lks)))
-    els.append(md("[打开 163 邮箱去处理 ↗](https://mail.163.com)"))
+            "• [%s ↗](%s)" % (u.split("/")[2][:30], u) for u in lks)))
+    els.append(md("[打开 163 邮箱 ↗](https://mail.163.com)"))
     els.append({"tag": "note", "elements": [{"tag": "plain_text",
                 "content": "邮件时间 %s ｜ 云端自动整理" % when}]})
     return card("📩 新邮件", els)
@@ -444,7 +455,8 @@ def apply_cmd(text, pending):
     p = items[n - 1]
     pending.remove(p)
     left = len(sorted_pending(pending))
-    return ["✅ 已勾掉「%s」\n还剩 %d 件。" % ((p.get("text") or "")[:40], left)]
+    return ["✅ 已勾掉「%s」\n还剩 %d 件，下面是更新后的清单。" % ((p.get("text") or "")[:40], left),
+            "__LIST__"]
 
 
 def send_text(chat_id, text, token):
@@ -512,10 +524,11 @@ def handle_commands(state, pending):
                 send_text(cid, "整理失败了：" + str(e)[:80], tok)
             continue
         res = apply_cmd(text, pending)
-        if res == ["__LIST__"]:
+        if "__LIST__" in res:
+            changed = True
             feishu(daily_card(pending))
-            replies.append("📋 已把当前清单发到群里。")
-        elif res:
+            res = [x for x in res if x != "__LIST__"]
+        if res:
             changed = True
             replies.extend(res)
     state["last_cmd_ts"] = newest
@@ -602,23 +615,32 @@ def imap_range(start_date, end_date):
             for u in uids:
                 typ, dat = M.uid("FETCH", str(u), "(BODY.PEEK[])")
                 if typ == "OK" and dat and isinstance(dat[0], tuple):
-                    out.append((name, u, dat[0][1]))
+                    raw = dat[0][1]
+                    try:
+                        hdr = message_from_bytes(raw)
+                        ts = parsedate_to_datetime(hdr.get("Date")).timestamp()
+                    except Exception:
+                        ts = 0
+                    out.append((ts, name, u, raw))
         except Exception as e:
             log("搜索", name, "失败:", e)
     M.logout()
-    out.sort(key=lambda x: x[1], reverse=True)
-    return out[:RANGE_CAP]
+    out.sort(key=lambda x: x[0], reverse=True)   # 按邮件日期从新到旧
+    return [(name, u, raw) for _ts, name, u, raw in out[:RANGE_CAP]]
 
 
-def range_report(start_date, end_date, token, chat_id, pending):
+def range_report(start_date, end_date, token, chat_id, pending, skip=None):
     mails = imap_range(start_date, end_date)
     send_text(chat_id, "✅ 正在整理 %s 到 %s 的邮件（共 %d 封），稍后发结果。"
               % (start_date, end_date, len(mails)), token)
-    els, n_new, skipped = [], 0, 0
+    els, n_new, skipped, done = [], 0, 0, []
     for name, uid, raw in mails:
         msg = message_from_bytes(raw)
-        subj = str(make_header(decode_header(msg.get("Subject", "(no subject)"))))[:70]
-        frm = str(make_header(decode_header(msg.get("From", ""))))[:50]
+        mid = str(msg.get("Message-ID") or "")
+        if skip and mid and hashlib.sha256(mid.encode()).hexdigest()[:16] in skip:
+            continue
+        subj = hdr(msg, "Subject", "(no subject)")[:70]
+        frm = hdr(msg, "From", "")[:50]
         if os.environ.get("ONLY_SCHOOL", "1") == "1" and not is_school(frm):
             skipped += 1
             continue
@@ -629,37 +651,19 @@ def range_report(start_date, end_date, token, chat_id, pending):
         except Exception as e:
             log("AI 失败:", subj[:24], e)
             a = {}
+        if n_new:
+            time.sleep(1)
+        feishu(mail_card(subj, frm, when, a, forced=True, body_text=body))
         add_pending(pending, subj, a)
+        if mid:
+            done.append(hashlib.sha256(mid.encode()).hexdigest()[:16])
         n_new += 1
-        lines = ["**%s** ｜ %s" % (subj, frm), "🕐 %s ｜ 📁 %s" % (when, name)]
-        if a.get("translation"):
-            lines.append("**中文翻译：**" + a["translation"])
-        elif a.get("summary"):
-            lines.append("**中文摘要：**" + a["summary"])
-        acts = [x for x in (a.get("actions") or []) if isinstance(x, dict) and x.get("text")]
-        if acts:
-            for x in acts[:3]:
-                u = (x.get("url") or "").strip()
-                ev = (x.get("evidence") or "").strip()
-                lines.append("• %s%s" % (x["text"], ("　[去办理 ↗](%s)" % u) if u.startswith("http") else ""))
-                if ev:
-                    lines.append("　　*原文：%s*" % ev[:130])
-        else:
-            lines.append("**待办：**（这封没有需要动手的事）")
-        lks = mail_links(body)
-        if lks:
-            lines.append("**邮件里的链接：** " + " ｜ ".join("[%s ↗](%s)" % (u.split("/")[2][:24], u) for u in lks))
-        els.append(md("\n".join(lines)))
-        els.append({"tag": "hr"})
-    if not els:
-        els = [md("这个时间段没有找到邮件。")]
     els.append(md("[打开 163 邮箱去处理 ↗](https://mail.163.com)"))
     els.append({"tag": "note", "elements": [{"tag": "plain_text",
                 "content": "只看学校邮件 ｜ %s 到 %s ｜ 学校邮件 %d 封（其余 %d 封非学校邮件已跳过，不花 token）"
                 % (start_date, end_date, n_new, skipped)}]})
     feishu(card("📚 %s 到 %s 的邮件" % (start_date, end_date), els))
-    return n_new
-
+    return n_new, done
 
 def do_fetch():
     state = load(STATE, {})
@@ -669,8 +673,8 @@ def do_fetch():
     pushed = 0
     for uid, raw in mails:
         msg = message_from_bytes(raw)
-        subj = str(make_header(decode_header(msg.get("Subject", "(no subject)"))))
-        frm = str(make_header(decode_header(msg.get("From", ""))))
+        subj = hdr(msg, "Subject", "(no subject)")
+        frm = hdr(msg, "From", "")
         when = (msg.get("Date") or "")[:31]
         body = text_of(msg)
         school = is_school(frm)

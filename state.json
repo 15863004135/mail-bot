@@ -26,5 +26,34 @@
   }
  },
  "last_cmd_ts": 1791254036,
- "cmd_chat": "oc_c38de4dc253c570ec2f036ac105c7ccb"
+ "cmd_chat": "oc_c38de4dc253c570ec2f036ac105c7ccb",
+ "range_done": [
+  "20a27086eed4609d",
+  "22ed7ba8ae04466f",
+  "334faad0e9a7f321",
+  "3cd254603930e697",
+  "449557ff898230f5",
+  "5204ad4a33966536",
+  "52840549d15840d1",
+  "553b0f53fe93c342",
+  "58cbd04e200f4408",
+  "5ab5cbfa9bedce31",
+  "5f22106f05c90f04",
+  "6538bf8303786253",
+  "6a0feec60c773a27",
+  "6e7ba2c7b7144c19",
+  "72931a17130554c9",
+  "78fffe0c0ca7c1f8",
+  "827315a4a2d46329",
+  "9c4deb6fc05c86c1",
+  "a11c35de8373d526",
+  "a82f68a2e4a5e94c",
+  "b52a9e037de5c0f3",
+  "e26bbbc06205441d",
+  "e540919b8f17f5c0",
+  "eae28368dda5dda8",
+  "fd8623189d25bb15",
+  "feb2757375f08669",
+  "fedf1507315c52a5"
+ ]
 }
