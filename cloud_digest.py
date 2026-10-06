@@ -6,7 +6,7 @@
     python cloud_digest.py daily    推一条今日待办
     python cloud_digest.py test     只发一条测试消息
 """
-import base64, hashlib, hmac, imaplib, json, os, re, sys, time, urllib.request
+import base64, hashlib, hmac, imaplib, io, json, os, re, sys, time, urllib.request
 from datetime import datetime, timedelta, timezone
 from email import message_from_bytes
 from email.header import decode_header, make_header
@@ -21,6 +21,7 @@ PASS = os.environ.get("MAIL163_PASS", "").strip()
 KEY = os.environ.get("DEEPSEEK_KEY", "").strip()
 HOOK = os.environ.get("FEISHU_WEBHOOK", "").strip()
 MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash").strip()
+DATA_KEY = os.environ.get("DATA_KEY", "").strip()
 IMAP_HOST = os.environ.get("MAIL_IMAP_HOST", "imap.163.com").strip()
 
 SCHOOL = ["exeter.ac.uk", "exeterguild.com", "exeterguild.org",
@@ -33,6 +34,61 @@ MAX_PER_RUN = 15
 
 def log(*a):
     print(datetime.now(TZ).strftime("%H:%M:%S"), *a, flush=True)
+
+
+
+# ---------- 数据文件加密（密钥放 GitHub Secrets，公开仓库里只看到乱码）----------
+def _key():
+    if not DATA_KEY:
+        return None
+    return hashlib.sha256(DATA_KEY.encode("utf-8")).digest()
+
+
+def _keystream(key, nonce, n):
+    out, i = b"", 0
+    while len(out) < n:
+        out += hmac.new(key, nonce + i.to_bytes(8, "big"), hashlib.sha256).digest()
+        i += 1
+    return out[:n]
+
+
+def enc(obj):
+    """没有配钥匙就存明文（本地用）；配了就存加密串。"""
+    data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    key = _key()
+    if not key:
+        return data.decode("utf-8")
+    nonce = os.urandom(16)
+    ct = bytes(a ^ b for a, b in zip(data, _keystream(key, nonce, len(data))))
+    tag = hmac.new(key, nonce + ct, hashlib.sha256).digest()
+    return "ENC1:" + base64.b64encode(nonce + tag + ct).decode()
+
+
+def dec(raw):
+    raw = (raw or "").strip()
+    if not raw.startswith("ENC1:"):
+        return json.loads(raw) if raw else None
+    key = _key()
+    if not key:
+        raise RuntimeError("pending.json 是加密的，但仓库里没有配置 DATA_KEY 这个 Secret")
+    blob = base64.b64decode(raw[5:])
+    nonce, tag, ct = blob[:16], blob[16:48], blob[48:]
+    if not hmac.compare_digest(tag, hmac.new(key, nonce + ct, hashlib.sha256).digest()):
+        raise RuntimeError("数据校验失败：DATA_KEY 换过了吗？")
+    return json.loads(bytes(a ^ b for a, b in zip(ct, _keystream(key, nonce, len(ct)))).decode("utf-8"))
+
+
+def load_data(path, default):
+    try:
+        v = dec(io.open(path, encoding="utf-8").read())
+        return default if v is None else v
+    except Exception as e:
+        log("读取", os.path.basename(path), "失败:", e)
+        return default
+
+
+def save_data(path, obj):
+    io.open(path, "w", encoding="utf-8", newline="\n").write(enc(obj) + "\n")
 
 
 def load(path, default):
@@ -249,7 +305,7 @@ def add_pending(pending, subject, a):
 
 def do_fetch():
     state = load(STATE, {})
-    pending = load(PENDING, [])
+    pending = load_data(PENDING, [])
     mails = fetch_new(state)
     log("取到新邮件 %d 封" % len(mails))
     pushed = 0
@@ -275,13 +331,13 @@ def do_fetch():
         else:
             log("按规则跳过:", subj[:36])
     save(STATE, state)
-    save(PENDING, pending)
+    save_data(PENDING, pending)
     log("推送 %d 封，待办池 %d 条" % (pushed, len(pending)))
     return 0
 
 
 def do_daily():
-    feishu(daily_card(load(PENDING, [])))
+    feishu(daily_card(load_data(PENDING, [])))
     return 0
 
 
