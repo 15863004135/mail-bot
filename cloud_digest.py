@@ -733,7 +733,9 @@ def handle_commands(state, pending):
                 changed = True
                 log("按需整理了 %d 封" % n)
             except Exception as e:
+                import traceback
                 log("按需整理失败:", e)
+                traceback.print_exc()
                 send_text(cid, "整理失败了：" + str(e)[:80], tok)
             continue
         res = apply_cmd(text, pending, state.setdefault("done_log", []))
@@ -973,7 +975,7 @@ def do_fetch():
     return 0
 
 
-def do_watch(minutes=315, cmd_every=15, mail_every=90):
+def do_watch(minutes=315, cmd_every=15, mail_every=300):
     """常驻模式：每 15 秒看一次群消息（秒回），每 90 秒收一次新邮件。"""
     state = load(STATE, {})
     pending = load_data(PENDING, [])
