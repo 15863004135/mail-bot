@@ -1,0 +1,34 @@
+name: mail-daemon
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: mail-daemon
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  daemon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resident loop
+        env:
+          MAIL163_USER: ${{ secrets.MAIL163_USER }}
+          MAIL163_PASS: ${{ secrets.MAIL163_PASS }}
+          DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_KEY }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: python cloud_digest.py watch 320
+      - name: Save state
+        if: always()
+        run: |
+          git config user.name "mail-bot"
+          git config user.email "mail-bot@users.noreply.github.com"
+          git add state.json pending.json
+          git diff --quiet --cached || git commit -m "update state [skip ci]"
+          git push || true
