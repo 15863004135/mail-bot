@@ -246,6 +246,7 @@ def fetch_new(state):
 PROMPT = """You help a Chinese student triage university email. Read the email and reply with JSON only:
 {"category":"action|important|fyi",
  "summary":"centre idea in Simplified Chinese, under 80 characters",
+ "translation":"把邮件正文翻译成简体中文，保留关键信息（时间、金额、机构名、要求），最多 300 字",
  "actions":[{"text":"what to do, in Chinese, start with a verb","evidence":"the exact original sentence from the email that supports this (keep its original language)","url":"official URL from the email, else empty"}],
  "deadlines":[{"date":"YYYY-MM-DD","text":"Chinese note"}],
  "events":[{"date":"YYYY-MM-DD","time":"HH:MM or empty","text":"Chinese note"}]}
@@ -281,11 +282,15 @@ def is_ad(subject, sender):
     return any(w.lower() in t for w in AD_WORDS)
 
 
-def mail_card(subject, sender, when, a, forced=False):
+def mail_card(subject, sender, when, a, forced=False, body_text=""):
     cat = {"action": "需要行动", "important": "重要", "fyi": "知会"}.get(a.get("category"), "")
     els = [md("**%s**\n%s ｜ %s%s" % (subject, cat, sender, " ｜ 学校邮件" if forced else ""))]
-    if a.get("summary"):
+    if a.get("translation"):
+        els.append(md("**【中文翻译】**\n" + a["translation"]))
+    elif a.get("summary"):
         els.append(md("**【这封在讲什么】**\n" + a["summary"]))
+    if not (a.get("actions") or []):
+        els.append(md("**【要做什么】**\n（这封没有需要你动手的事）"))
     acts = []
     for x in (a.get("actions") or [])[:6]:
         if isinstance(x, dict) and x.get("text"):
@@ -306,6 +311,10 @@ def mail_card(subject, sender, when, a, forced=False):
     evs = [e for e in evs if e[2]]
     if evs:
         els.append(md("**【活动】**\n" + "\n".join("• %s %s%s" % (d, (t + " ") if t else "", x) for d, t, x in evs[:5])))
+    lks = mail_links(body_text)
+    if lks:
+        els.append(md("**【邮件里的链接】**\n" + "\n".join(
+            "• [%s ↗](%s)" % (u.split("/")[2][:28], u) for u in lks)))
     els.append(md("[打开 163 邮箱去处理 ↗](https://mail.163.com)"))
     els.append({"tag": "note", "elements": [{"tag": "plain_text",
                 "content": "邮件时间 %s ｜ 云端自动整理" % when}]})
@@ -510,8 +519,26 @@ def handle_commands(state, pending):
 
 # ---------- 按日期范围整理邮件 ----------
 MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
-RANGE_CAP = 25          # 一次最多整理几封，控制时间和花费
+RANGE_CAP = 40          # 一次最多整理几封（越大越全，花钱越多）
 
+
+
+def mail_links(body, limit=3):
+    """从邮件正文里挑几个真实可点的链接（去掉退订之类）。"""
+    urls = re.findall(r"https?://[^\s<>\"')]+", body or "")
+    out, seen = [], set()
+    for u in urls:
+        u = u.rstrip(".,;)]>")
+        low = u.lower()
+        if "unsubscribe" in low or "退订" in u or "mail.163.com" in low:
+            continue
+        if u in seen:
+            continue
+        seen.add(u)
+        out.append(u)
+        if len(out) >= limit:
+            break
+    return out
 
 def parse_range(text):
     """识别「9月26日之后」「9/26以后」「最近3天」「9月20日到9月26日」。"""
@@ -525,15 +552,15 @@ def parse_range(text):
     if re.search(r"最近\s*(一周|7天|一星期)", t):
         return (today - timedelta(days=7), today)
     d1 = d2 = None
-    m = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", t)
+    m = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日?", t)
     if m:
         d1 = datetime(today.year, int(m.group(1)), int(m.group(2))).date()
         rest = t[m.end():]
-        m2 = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", rest)
+        m2 = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日?", rest)
         if m2:
             d2 = datetime(today.year, int(m2.group(1)), int(m2.group(2))).date()
     if not d1:
-        ms = re.findall(r"(\d{1,2})\s*[/-]\s*(\d{1,2})", t)
+        ms = re.findall(r"(\d{1,2})\s*[./／\-－]\s*(\d{1,2})", t)
         if ms:
             def mk(a, b):
                 a, b = int(a), int(b)
@@ -594,19 +621,28 @@ def range_report(start_date, end_date, token, chat_id, pending):
         add_pending(pending, subj, a)
         n_new += 1
         lines = ["**%s** ｜ %s" % (subj, frm), "🕐 %s ｜ 📁 %s" % (when, name)]
-        if a.get("summary"):
+        if a.get("translation"):
+            lines.append("**中文翻译：**" + a["translation"])
+        elif a.get("summary"):
             lines.append("**中文摘要：**" + a["summary"])
-        for x in (a.get("actions") or [])[:3]:
-            if isinstance(x, dict) and x.get("text"):
+        acts = [x for x in (a.get("actions") or []) if isinstance(x, dict) and x.get("text")]
+        if acts:
+            for x in acts[:3]:
                 u = (x.get("url") or "").strip()
                 ev = (x.get("evidence") or "").strip()
                 lines.append("• %s%s" % (x["text"], ("　[去办理 ↗](%s)" % u) if u.startswith("http") else ""))
                 if ev:
                     lines.append("　　*原文：%s*" % ev[:130])
+        else:
+            lines.append("**待办：**（这封没有需要动手的事）")
+        lks = mail_links(body)
+        if lks:
+            lines.append("**邮件里的链接：** " + " ｜ ".join("[%s ↗](%s)" % (u.split("/")[2][:24], u) for u in lks))
         els.append(md("\n".join(lines)))
         els.append({"tag": "hr"})
     if not els:
         els = [md("这个时间段没有找到邮件。")]
+    els.append(md("[打开 163 邮箱去处理 ↗](https://mail.163.com)"))
     els.append({"tag": "note", "elements": [{"tag": "plain_text",
                 "content": "按需整理 ｜ %s 到 %s ｜ 共 %d 封" % (start_date, end_date, n_new)}]})
     feishu(card("📚 %s 到 %s 的邮件" % (start_date, end_date), els))
@@ -635,7 +671,7 @@ def do_fetch():
         add_pending(pending, subj, a)
         send = school or (a["category"] in ("action", "important") and not is_ad(subj, frm))
         if send:
-            if feishu(mail_card(subj, frm, when, a, forced=school)):
+            if feishu(mail_card(subj, frm, when, a, forced=school, body_text=body)):
                 pushed += 1
             time.sleep(1)
         else:
