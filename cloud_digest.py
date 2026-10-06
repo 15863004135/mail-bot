@@ -437,6 +437,54 @@ def apply_cmd(text, pending, done_log=None):
     low = t.lower()
     if low in ("清单", "list", "待办", "全部", "查看"):
         return ["__LIST__"]
+    # 一次勾掉多条：1-30完成 / 1到30完成 / 1,2,5完成 / 全部完成
+    if re.search(r"(全部|所有|都).*(完成|done|已办|删)", t, re.I) or re.search(r"(完成|done|删).*(全部|所有)", t, re.I):
+        items = sorted_pending(pending)
+        if not items:
+            return ["待办清单已经是空的。"]
+        n_removed = len(items)
+        for x in items:
+            if done_log is not None:
+                done_log.append({"text": x.get("text", ""), "at": datetime.now(TZ).isoformat()})
+        pending[:] = []
+        return ["✅ 已把全部 %d 件标记完成，清单清空了。" % n_removed, "__LIST__"]
+    m = re.match(r"^(\d+)\s*[-~～至到]\s*(\d+).{0,6}?(完成|done|已完成|好了|ok|删|删除)$", t, re.I) or \
+        re.match(r"^(?:完成|done|删|删除)\s*(\d+)\s*[-~～至到]\s*(\d+)$", t, re.I)
+    if m:
+        nums_all = [int(x) for x in re.findall(r"\d+", t)]
+        a, b = nums_all[0], nums_all[-1]
+        if a > b:
+            a, b = b, a
+        nums = list(range(a, b + 1))          # 1-30 -> 1..30，一条一条展开
+        items = sorted_pending(pending)
+        picked = [items[i - 1] for i in sorted(set(nums)) if 1 <= i <= len(items)]
+        if not picked:
+            return ["这个范围里没有可勾掉的待办（现在共 %d 条）。" % len(items)]
+        for x in picked:
+            try:
+                pending.remove(x)
+            except ValueError:
+                pass
+            if done_log is not None:
+                done_log.append({"text": x.get("text", ""), "at": datetime.now(TZ).isoformat()})
+        return ["✅ 已勾掉 %d 件（%d-%d），还剩 %d 件。\n下面是更新后的清单。"
+                % (len(picked), min(nums), max(nums), len(sorted_pending(pending))), "__LIST__"]
+    m = re.match(r"^[\d,，、\s]+?(完成|done|删|删除)$", t, re.I)
+    if m:
+        nums = [int(x) for x in re.findall(r"\d+", t)]
+        items = sorted_pending(pending)
+        picked = [items[i - 1] for i in sorted(set(nums)) if 1 <= i <= len(items)]
+        if not picked:
+            return ["这些序号里没有可勾掉的待办（现在共 %d 条）。" % len(items)]
+        for x in picked:
+            try:
+                pending.remove(x)
+            except ValueError:
+                pass
+            if done_log is not None:
+                done_log.append({"text": x.get("text", ""), "at": datetime.now(TZ).isoformat()})
+        return ["✅ 已勾掉 %d 件，还剩 %d 件。\n下面是更新后的清单。"
+                % (len(picked), len(sorted_pending(pending))), "__LIST__"]
     m = re.match(r"^(\d+)\s*(?:条)?\s*(完成|done|已完成|好了|ok|删|删除)$", t, re.I) or \
         re.match(r"^(?:完成|done|已完成|删|删除)\s*(\d+)$", t, re.I)
     if m:
