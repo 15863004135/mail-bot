@@ -39,9 +39,16 @@ def log(*a):
 
 # ---------- 数据文件加密（密钥放 GitHub Secrets，公开仓库里只看到乱码）----------
 def _key():
-    if not DATA_KEY:
+    """优先用 DATA_KEY；如果 workflow 还没把它传进来，就用 DEEPSEEK_KEY 派生一个，
+    这样不需要改 workflow 也能加密。"""
+    seed = DATA_KEY or (("derive:" + (KEY or "")) if KEY else "")
+    if not seed:
         return None
-    return hashlib.sha256(DATA_KEY.encode("utf-8")).digest()
+    return hashlib.sha256(seed.encode("utf-8")).digest()
+
+
+def _key_source():
+    return "DATA_KEY" if DATA_KEY else ("DEEPSEEK_KEY(派生)" if KEY else "无")
 
 
 def _keystream(key, nonce, n):
@@ -360,6 +367,7 @@ def main():
         log("缺少环境变量:", ", ".join(missing))
         return 1
     if mode == "fetch":
+        log("加密钥匙来源:", _key_source())
         return do_fetch()
     if mode == "daily":
         return do_daily()
