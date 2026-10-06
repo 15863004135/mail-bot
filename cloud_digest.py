@@ -606,11 +606,14 @@ def range_report(start_date, end_date, token, chat_id, pending):
     mails = imap_range(start_date, end_date)
     send_text(chat_id, "✅ 正在整理 %s 到 %s 的邮件（共 %d 封），稍后发结果。"
               % (start_date, end_date, len(mails)), token)
-    els, n_new = [], 0
+    els, n_new, skipped = [], 0, 0
     for name, uid, raw in mails:
         msg = message_from_bytes(raw)
         subj = str(make_header(decode_header(msg.get("Subject", "(no subject)"))))[:70]
         frm = str(make_header(decode_header(msg.get("From", ""))))[:50]
+        if os.environ.get("ONLY_SCHOOL", "1") == "1" and not is_school(frm):
+            skipped += 1
+            continue
         when = (msg.get("Date") or "")[:22]
         body = text_of(msg)
         try:
@@ -644,7 +647,8 @@ def range_report(start_date, end_date, token, chat_id, pending):
         els = [md("这个时间段没有找到邮件。")]
     els.append(md("[打开 163 邮箱去处理 ↗](https://mail.163.com)"))
     els.append({"tag": "note", "elements": [{"tag": "plain_text",
-                "content": "按需整理 ｜ %s 到 %s ｜ 共 %d 封" % (start_date, end_date, n_new)}]})
+                "content": "只看学校邮件 ｜ %s 到 %s ｜ 学校邮件 %d 封（其余 %d 封非学校邮件已跳过，不花 token）"
+                % (start_date, end_date, n_new, skipped)}]})
     feishu(card("📚 %s 到 %s 的邮件" % (start_date, end_date), els))
     return n_new
 
@@ -662,13 +666,17 @@ def do_fetch():
         when = (msg.get("Date") or "")[:31]
         body = text_of(msg)
         school = is_school(frm)
+        if not school and os.environ.get("ONLY_SCHOOL", "1") == "1":
+            log("不是学校邮件，直接跳过（不花 token）：", (frm or "")[:40], "|", subj[:30])
+            continue
         try:
             a = ask_ai(subj, frm, body) or {}
         except Exception as e:
             log("AI 失败:", subj[:30], e)
             a = {}
         a["category"] = a.get("category") or "fyi"
-        add_pending(pending, subj, a)
+        if school or os.environ.get("ONLY_SCHOOL", "1") != "1":
+            add_pending(pending, subj, a)
         send = school or (a["category"] in ("action", "important") and not is_ad(subj, frm))
         if send:
             if feishu(mail_card(subj, frm, when, a, forced=school, body_text=body)):
