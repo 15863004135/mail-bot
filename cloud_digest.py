@@ -490,6 +490,16 @@ def apply_cmd(text, pending, done_log=None):
     """把「3 完成」「EDI 完成」「清单」变成动作，返回要回复的话。"""
     t = (text or "").strip()
     low = t.lower()
+    if low in ("帮助", "help", "命令", "怎么用"):
+        return ["**可用命令（说一句就行）**\n"
+                "• `3 完成` —— 勾掉第 3 条\n"
+                "• `1-30完成` —— 勾掉第 1 到 30 条\n"
+                "• `1,2,5完成` —— 勾掉这几条\n"
+                "• `全部完成` —— 清空清单\n"
+                "• `EDI 完成` —— 按关键词勾掉\n"
+                "• `清单` —— 发一份当前待办\n"
+                "• `9.20之后` —— 整理这个日期之后的学校邮件\n"
+                "• `帮我找个周末的活动` —— 我会问你要哪类，再给报名链接"]
     if low in ("清单", "list", "待办", "全部", "查看"):
         return ["__LIST__"]
     # 一次勾掉多条：1-30完成 / 1到30完成 / 1,2,5完成 / 全部完成
@@ -648,6 +658,9 @@ def handle_commands(state, pending):
                 send_text(cid, "整理失败了：" + str(e)[:80], tok)
             continue
         res = apply_cmd(text, pending, state.setdefault("done_log", []))
+        # 规范：勾掉就只回一句确认；只有你明确说"清单/列表"才重发清单
+        if "__LIST__" in res and not re.search(r"(清单|列表|我要看|发我|看一下)", text):
+            res = [x for x in res if x != "__LIST__"]
         if "__LIST__" in res:
             changed = True
             feishu(daily_card(pending))
@@ -708,6 +721,9 @@ def parse_range(text):
         if m2:
             d2 = datetime(today.year, int(m2.group(1)), int(m2.group(2))).date()
     if not d1:
+        # 只有提到"邮件/整理/爬/汇总"之类，才把 9-20 这种当成日期
+        if not re.search(r"(邮件|整理|爬|汇总|收件箱|看看|查一下|以来|以后|之后|最近)", t):
+            return None
         ms = re.findall(r"(\d{1,2})\s*[./／\-－]\s*(\d{1,2})", t)
         if ms:
             def mk(a, b):
