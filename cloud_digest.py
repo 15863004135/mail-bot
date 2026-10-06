@@ -436,7 +436,7 @@ def sorted_pending(pending):
 ACT = {
     "hike":  ("徒步/户外", [
         ("Meetup：Exeter 徒步活动", "https://www.meetup.com/find/?keywords=hiking&location=Exeter"),
-        ("学生会社团总表（找 Hiking / Walking Society）", "https://www.exeterguild.com/societies/main/pages/societies"),
+        ("学生会社团总表（找 Hiking / Walking Society）", "https://www.exeterguild.com/societies/main/societies"),
         ("Exeter 官方旅游（周边去哪玩）", "https://www.visitexeter.com/"),
     ]),
     "sport": ("运动/健身", [
