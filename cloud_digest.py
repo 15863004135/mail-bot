@@ -814,11 +814,11 @@ def weekly_card(pending, state):
     return card("📊 本周回顾", els)
 
 
-def do_fetch():
-    state = load(STATE, {})
-    pending = load_data(PENDING, [])
+def process_new_mail(state, pending):
+    """取一次新邮件、分析、推飞书、更新待办池。返回推送条数。"""
     mails = fetch_new(state)
-    log("取到新邮件 %d 封" % len(mails))
+    if mails:
+        log("取到新邮件 %d 封" % len(mails))
     pushed = 0
     for uid, raw in mails:
         msg = message_from_bytes(raw)
@@ -836,22 +836,14 @@ def do_fetch():
             log("AI 失败:", subj[:30], e)
             a = {}
         a["category"] = a.get("category") or "fyi"
-        if school or os.environ.get("ONLY_SCHOOL", "1") != "1":
-            add_pending(pending, subj, a)
-        send = school or (a["category"] in ("action", "important") and not is_ad(subj, frm))
-        if send:
-            if feishu(mail_card(subj, frm, when, a, forced=school, body_text=body)):
-                pushed += 1
-            time.sleep(1)
-        else:
-            log("按规则跳过:", subj[:36])
-    # 处理群里的命令（完成/清单/按日期整理）
-    try:
-        if handle_commands(state, pending):
-            log("已按群里的命令更新待办池")
-    except Exception as e:
-        log("处理命令出错:", e)
-    # 每天 08:00（英国时间）推今日待办；周日 20:00 推周报
+        add_pending(pending, subj, a)
+        if feishu(mail_card(subj, frm, when, a, forced=school, body_text=body)):
+            pushed += 1
+    return pushed
+
+
+def housekeeping(state, pending):
+    """每天 08:00（英国时间）推今日待办；周日 20:00 推周报。"""
     try:
         uk = datetime.now(UK)
         if uk.strftime("%H:%M") >= "08:00" and state.get("last_daily_uk") != uk.strftime("%Y-%m-%d"):
@@ -864,9 +856,53 @@ def do_fetch():
                 log("已推送本周回顾")
     except Exception as e:
         log("日报/周报出错:", e)
+
+
+def do_fetch():
+    state = load(STATE, {})
+    pending = load_data(PENDING, [])
+    pushed = process_new_mail(state, pending)
+    try:
+        if handle_commands(state, pending):
+            log("已按群里的命令更新待办池")
+    except Exception as e:
+        log("处理命令出错:", e)
+    housekeeping(state, pending)
     save(STATE, state)
     save_data(PENDING, pending)
     log("推送 %d 封，待办池 %d 条" % (pushed, len(pending)))
+    return 0
+
+
+def do_watch(minutes=315, cmd_every=15, mail_every=90):
+    """常驻模式：每 15 秒看一次群消息（秒回），每 90 秒收一次新邮件。"""
+    state = load(STATE, {})
+    pending = load_data(PENDING, [])
+    end = time.time() + minutes * 60
+    last_mail = 0.0
+    log("常驻模式启动：%d 分钟 | 命令每 %d 秒 | 邮件每 %d 秒" % (minutes, cmd_every, mail_every))
+    while time.time() < end:
+        try:
+            if handle_commands(state, pending):
+                save_data(PENDING, pending)
+                save(STATE, state)
+        except Exception as e:
+            log("命令处理出错:", e)
+        try:
+            if time.time() - last_mail >= mail_every:
+                last_mail = time.time()
+                n = process_new_mail(state, pending)
+                housekeeping(state, pending)
+                save_data(PENDING, pending)
+                save(STATE, state)
+                if n:
+                    log("本轮推送 %d 封" % n)
+        except Exception as e:
+            log("收信出错:", e)
+        time.sleep(cmd_every)
+    save(STATE, state)
+    save_data(PENDING, pending)
+    log("常驻模式结束，状态已保存")
     return 0
 
 
@@ -890,6 +926,9 @@ def main():
     if missing:
         log("缺少环境变量:", ", ".join(missing))
         return 1
+    if mode == "watch":
+        log("加密钥匙来源:", _key_source())
+        return do_watch(minutes=(int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 315))
     if mode == "fetch":
         log("加密钥匙来源:", _key_source())
         return do_fetch()
